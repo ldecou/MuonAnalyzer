@@ -474,8 +474,8 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
 
         // Gen matching
            for (auto genParticle = genColl->cbegin(); genParticle != genColl->cend(); ++genParticle) {
-              const pat::PackedGenParticleCollection& mcMuon = (*genParticle);
-              //const reco::GenParticleCollection& mcMuon = (*genParticle);
+              const pat::PackedGenParticle& mcMuon = (*genParticle);
+              //const reco::GenParticle& mcMuon = (*genParticle);
               if ( not (abs(mcMuon.pdgId()) == 13 ) ) continue; // make sure it is a muon
               if ( fabs(mcMuon.eta()) > 2.4 ) continue;
               if ( not (mcMuon.pt() > 1.5 ) ) continue;
@@ -571,13 +571,13 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
 
   for(auto&& muon : *(muonColl.product())) {
     // Let's skip muons that are standalone only
-
+    cout << "Muon PT: " << muon.pt() << endl;        
     // Check if it is matched to a GenParticle
     const reco::GenParticle *gmu = muon.genParticle();
-    if(muon.genParticle()) continue;
+    if(!muon.genParticle()) continue;
 
     // Check if the GenParticle is among the ones we selected 
-    if(std::find(gmbeg, gmend, gmu)==gmend) continue;
+    //if(std::find(gmbeg, gmend, gmu)==gmend) continue;
 
     // Fill the plots here 
     // (Let's not cut on pat::Muon pt and |eta| (already cut at GEN level))
@@ -586,6 +586,7 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
     //  Fill ID plots 
     //  - Loose 
     if(muon.isLooseMuon()) {
+    cout << "Loose Muon PT: " << muon.pt() << endl;
     h_rec_loose_pt->Fill(muon.pt());
     h_rec_loose_eta->Fill(muon.eta());
     h_rec_loose_nvtx->Fill(nGoodVtx);    
@@ -594,6 +595,7 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
 
     //  - Medium 
     if(muon.isMediumMuon()) {
+    cout << "Medium Muon PT: " << muon.pt() << endl;
     h_rec_medium_pt->Fill(muon.pt());
     h_rec_medium_eta->Fill(muon.eta());
     h_rec_medium_nvtx->Fill(nGoodVtx);
@@ -601,6 +603,7 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
 
     //  - Tight
     if(muon.isTightMuon(*goodVtx)==false) continue; // if it's not tight, nothing else to do 
+    cout << "Tight Muon PT: " << muon.pt() << endl;
     h_rec_tight_pt->Fill(muon.pt());
     h_rec_tight_eta->Fill(muon.eta());
     h_rec_tight_nvtx->Fill(nGoodVtx);
