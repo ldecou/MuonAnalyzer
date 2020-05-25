@@ -564,17 +564,16 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
 
   // Retrieve the pat::Muon collection and loop over it 
   //edm::Handle<pat::MuonCollection> muonColl;
-  iEvent.getByToken(muonCollToken, muonColl);
   if(!muonColl.isValid()) {
     throw cms::Exception("Muon collection not valid!");
   }
 
-  for(auto&& muon : *(muonColl.product())) {
+  for(auto mu = muonColl->cbegin(); mu != muonColl->cend(); ++mu) {
+    cout << "Muon PT: " << (*mu).pt() << endl;        
     // Let's skip muons that are standalone only
-    cout << "Muon PT: " << muon.pt() << endl;        
     // Check if it is matched to a GenParticle
-    const reco::GenParticle *gmu = muon.genParticle();
-    if(!muon.genParticle()) continue;
+    const reco::GenParticle *gmu = (*mu).genParticle();
+    if(!(*mu).genParticle()) continue;
 
     // Check if the GenParticle is among the ones we selected 
     //if(std::find(gmbeg, gmend, gmu)==gmend) continue;
@@ -585,54 +584,54 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
     // -- ID --
     //  Fill ID plots 
     //  - Loose 
-    if(muon.isLooseMuon()) {
-    cout << "Loose Muon PT: " << muon.pt() << endl;
-    h_rec_loose_pt->Fill(muon.pt());
-    h_rec_loose_eta->Fill(muon.eta());
+    if((*mu).isLooseMuon()) {
+    cout << "Loose Muon PT: " << (*mu).pt() << endl;
+    h_rec_loose_pt->Fill((*mu).pt());
+    h_rec_loose_eta->Fill((*mu).eta());
     h_rec_loose_nvtx->Fill(nGoodVtx);    
 
     }
 
     //  - Medium 
-    if(muon.isMediumMuon()) {
-    cout << "Medium Muon PT: " << muon.pt() << endl;
-    h_rec_medium_pt->Fill(muon.pt());
-    h_rec_medium_eta->Fill(muon.eta());
+    if((*mu).isMediumMuon()) {
+    cout << "Medium Muon PT: " << (*mu).pt() << endl;
+    h_rec_medium_pt->Fill((*mu).pt());
+    h_rec_medium_eta->Fill((*mu).eta());
     h_rec_medium_nvtx->Fill(nGoodVtx);
     }
 
     //  - Tight
-    if(muon.isTightMuon(*goodVtx)==false) continue; // if it's not tight, nothing else to do 
-    cout << "Tight Muon PT: " << muon.pt() << endl;
-    h_rec_tight_pt->Fill(muon.pt());
-    h_rec_tight_eta->Fill(muon.eta());
+    if((*mu).isTightMuon(*goodVtx)==false) continue; // if it's not tight, nothing else to do 
+    cout << "Tight Muon PT: " << (*mu).pt() << endl;
+    h_rec_tight_pt->Fill((*mu).pt());
+    h_rec_tight_eta->Fill((*mu).eta());
     h_rec_tight_nvtx->Fill(nGoodVtx);
 
     // Now isolation, only for tight muons
-    if(muon.isIsolationValid()==false) continue;
-    const reco::MuonPFIsolation &pfR04 = muon.pfIsolationR04();
+    if((*mu).isIsolationValid()==false) continue;
+    const reco::MuonPFIsolation &pfR04 = (*mu).pfIsolationR04();
 
     // Calculate PF combined relative isolation with Delta-beta correction 
-    double chargedHadronIso = muon.pfIsolationR04().sumChargedHadronPt;
-    double neutralHadronIso  = muon.pfIsolationR04().sumNeutralHadronEt;
-    double photonIso  = muon.pfIsolationR04().sumPhotonEt;
-    double chargedHadronIsoPU = muon.pfIsolationR04().sumPUPt;
+    double chargedHadronIso = (*mu).pfIsolationR04().sumChargedHadronPt;
+    double neutralHadronIso  = (*mu).pfIsolationR04().sumNeutralHadronEt;
+    double photonIso  = (*mu).pfIsolationR04().sumPhotonEt;
+    double chargedHadronIsoPU = (*mu).pfIsolationR04().sumPUPt;
 
-    double corriso = ( chargedHadronIso + std::max(0., neutralHadronIso + photonIso - 0.5*chargedHadronIsoPU) )/muon.pt();
+    double corriso = ( chargedHadronIso + std::max(0., neutralHadronIso + photonIso - 0.5*chargedHadronIsoPU) )/(*mu).pt();
 
     if(corriso>0.15) continue; // not isolated, nothing else to do
-    h_rec_tight_iso_pt->Fill(muon.pt());
-    h_rec_tight_iso_eta->Fill(muon.eta());
+    h_rec_tight_iso_pt->Fill((*mu).pt());
+    h_rec_tight_iso_eta->Fill((*mu).eta());
     h_rec_tight_iso_nvtx->Fill(nGoodVtx);
     
     // Finally, let's see if the isolated tight muon fired a trigger
-    bool passTrigger = matchTriggerObject(muon, triggerIdxList, triggerNames, triggerObjects, triggerBits);
+    bool passTrigger = matchTriggerObject((*mu), triggerIdxList, triggerNames, triggerObjects, triggerBits);
     if(passTrigger==false) continue;
-    h_rec_tight_iso_hlt_pt->Fill(muon.pt());
-    h_rec_tight_iso_hlt_eta->Fill(muon.eta());
+    h_rec_tight_iso_hlt_pt->Fill((*mu).pt());
+    h_rec_tight_iso_hlt_eta->Fill((*mu).eta());
     h_rec_tight_iso_hlt_nvtx->Fill(nGoodVtx);
 
-  } // end for(auto&& muon : *(muonColl.product()))
+  } // end for(auto mu = muonColl->cbegin(); mu != muonColl->cend(); ++mu)
 
 
 
