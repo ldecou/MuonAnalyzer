@@ -318,6 +318,84 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
   iEvent.getByToken(muonCollToken, muonColl);
   //nrec = muonColl->size();
 
+  edm::Handle <pat::PackedGenParticleCollection> genColl;
+  //edm::Handle <reco::GenParticleCollection> genColl;
+  iEvent.getByToken(genCollToken, genColl);
+  //edm::Handle <pat::PackedGenParticleCollection> packedgenColl;
+  
+  edm::Handle<std::vector<reco::Vertex> > vertices;
+  iEvent.getByToken(vertexCollToken, vertices);
+  if(!vertices.isValid()) {
+    throw cms::Exception("Vertex collection not valid!");
+  }
+  
+  int nGoodVtx = 0;
+  const reco::Vertex *goodVtx = nullptr; 
+  for(std::vector<reco::Vertex>::const_iterator it=vertices->begin(), endVtx = vertices->end(); it!=endVtx; ++it) {
+    if(!it->isFake() && it->ndof()>4 && it->position().Rho()<2. && std::abs(it->position().Z())<24.) {
+      nGoodVtx++;
+      if(goodVtx==nullptr) goodVtx = &(*it);
+    }
+  }
+  // Require a good vertex
+  if(nGoodVtx==0) return;
+  
+  // Retrieve the GenParticle collection and loop over it 
+  //edm::Handle<reco::GenParticleCollection> genColl;
+  //iEvent.getByToken(genCollToken, genColl);
+  if(!genColl.isValid()) {
+    throw cms::Exception("GenParticle collection not valid!");
+  }
+  std::vector<const reco::GenParticle*> genmus;	
+
+
+	for(auto&& genPart : *(genColl.product())) {
+  		// Check if it's a muon from Drell-Yan process
+		if(genPart.isPromptFinalState() && std::abs(genPart.pdgId()) == 13) {
+			// Only muons within acceptance and pt>20
+  			if(genPart.pt() > 20. && std::abs(genPart.eta())<2.4) {
+  				h_genpt->Fill(genPart.pt());
+ 				h_nvtx->Fill(nGoodVtx);
+                        }
+                }
+        }
+  if(genmus.size()==0) return;
+  std::vector<const reco::GenParticle*>::const_iterator gmbeg = genmus.begin(), gmend = genmus.end();
+
+  // --- Now prepare all the trigger objects --- 
+  // Retrieve TriggerResults 
+  edm::Handle<edm::TriggerResults> triggerBits;
+  iEvent.getByToken(trigResultsToken, triggerBits);
+  if(!triggerBits.isValid()) {
+    throw cms::Exception("TriggerResults collection not valid!");
+  }
+
+  const edm::TriggerNames& triggerNames = iEvent.triggerNames(*triggerBits);
+
+  // Find trigger indexes (only once)
+  if(triggerIdxList.size()==0) {
+    for(auto&& t : triggerList) {
+      for(size_t i=0, n=triggerBits->size(); i<n; ++i) {
+        if(TString(triggerNames.triggerName(i)).Contains((t+"_v").c_str())) {
+          triggerIdxList[(t+"_v").c_str()] = i;
+          break;
+        }
+      }
+    }
+  }
+
+  // Retrieve TriggerObjects 
+  edm::Handle<pat::TriggerObjectStandAloneCollection> triggerObjects;
+  iEvent.getByToken(trigObjCollToken, triggerObjects);
+  if(!triggerObjects.isValid()) {
+    throw cms::Exception("TriggerObjectStandAloneCollection collection not valid!");
+  }
+
+  // Retrieve the pat::Muon collection and loop over it 
+  //edm::Handle<pat::MuonCollection> muonColl;
+  if(!muonColl.isValid()) {
+    throw cms::Exception("Muon collection not valid!");
+  }
   for (auto mu = muonColl->cbegin(); mu != muonColl->cend(); ++mu) {
     if ( fabs((*mu).eta()) < 2.4 && (*mu).pt() > 25 && (*mu).isMediumMuon()) {
 
@@ -339,9 +417,72 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
 		h_receta->Fill((*mu).eta());
 		h_recphi->Fill((*mu).phi());	
 		h_iso->Fill(relativeIsolationDBetaCorr);
-        }
-     }
-  }	
+        
+     
+		
+	        cout << "Muon PT: " << (*mu).pt() << endl;        
+	        // Let's skip muons that are standalone only
+	        // Check if it is matched to a GenParticle
+	        const reco::GenParticle *gmu = (*mu).genParticle();
+	        if(!(*mu).genParticle()) continue;
+
+	        // Check if the GenParticle is among the ones we selected 
+	        //if(std::find(gmbeg, gmend, gmu)==gmend) continue;
+
+	        // Fill the plots here 
+	        // (Let's not cut on pat::Muon pt and |eta| (already cut at GEN level))
+
+	        // -- ID --
+	        //  Fill ID plots 
+	        //  - Loose 
+	        if((*mu).isLooseMuon()) {
+	        cout << "Loose Muon PT: " << (*mu).pt() << endl;
+	        h_rec_loose_pt->Fill((*mu).pt());
+	        h_rec_loose_eta->Fill((*mu).eta());
+	        h_rec_loose_nvtx->Fill(nGoodVtx);    
+
+	        }
+
+	        //  - Medium 
+	        if((*mu).isMediumMuon()) {
+	        cout << "Medium Muon PT: " << (*mu).pt() << endl;
+	        h_rec_medium_pt->Fill((*mu).pt());
+	        h_rec_medium_eta->Fill((*mu).eta());
+	        h_rec_medium_nvtx->Fill(nGoodVtx);
+	        }
+
+	        //  - Tight
+	        if((*mu).isTightMuon(*goodVtx)==false) continue; // if it's not tight, nothing else to do 
+	        cout << "Tight Muon PT: " << (*mu).pt() << endl;
+	        h_rec_tight_pt->Fill((*mu).pt());
+	        h_rec_tight_eta->Fill((*mu).eta());
+	        h_rec_tight_nvtx->Fill(nGoodVtx);
+
+	        // Now isolation, only for tight muons
+	        if((*mu).isIsolationValid()==false) continue;
+	        const reco::MuonPFIsolation &pfR04 = (*mu).pfIsolationR04();
+
+	        // Calculate PF combined relative isolation with Delta-beta correction 
+	        double chargedHadronIso = (*mu).pfIsolationR04().sumChargedHadronPt;
+	        double neutralHadronIso  = (*mu).pfIsolationR04().sumNeutralHadronEt;
+	        double photonIso  = (*mu).pfIsolationR04().sumPhotonEt;
+	        double chargedHadronIsoPU = (*mu).pfIsolationR04().sumPUPt;
+
+	        double corriso = ( chargedHadronIso + std::max(0., neutralHadronIso + photonIso - 0.5*chargedHadronIsoPU) )/(*mu).pt();
+
+	        if(corriso>0.15) continue; // not isolated, nothing else to do
+	        h_rec_tight_iso_pt->Fill((*mu).pt());
+	        h_rec_tight_iso_eta->Fill((*mu).eta());
+	        h_rec_tight_iso_nvtx->Fill(nGoodVtx);
+	    
+	        // Finally, let's see if the isolated tight muon fired a trigger
+	        bool passTrigger = matchTriggerObject((*mu), triggerIdxList, triggerNames, triggerObjects, triggerBits);
+	        if(passTrigger==false) continue;
+	        h_rec_tight_iso_hlt_pt->Fill((*mu).pt());
+	        h_rec_tight_iso_hlt_eta->Fill((*mu).eta());
+	        h_rec_tight_iso_hlt_nvtx->Fill(nGoodVtx);
+
+	    } // end for(auto mu = muonColl->cbegin(); mu != muonColl->cend(); ++mu)
  
   
   cout << "Number of RECO muons: " << nrec << endl;
@@ -352,9 +493,6 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
   //  
   ////////////////////////////////////////////
 
-  edm::Handle <pat::PackedGenParticleCollection> genColl;
-  //edm::Handle <reco::GenParticleCollection> genColl;
-  iEvent.getByToken(genCollToken, genColl);
   //ngen = genColl->size();
   for (auto mu = genColl->cbegin(); mu != genColl->cend(); ++mu) {
     if ( abs((*mu).pdgId()) == 13 && fabs((*mu).eta()) < 2.4 && (*mu).pt() > 25 ) {
@@ -385,8 +523,6 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
 // // find mu+
   
 
-  for (auto mup = muonColl->cbegin(); mup != muonColl->cend(); ++mup) {
-     if ( not (mup->charge() > 0 ) ) continue;
   for (auto mup = muonColl->cbegin(); mup != muonColl->cend(); ++mup) {
      if ( not (mup->charge() > 0 ) ) continue;
      if ( not (mup->isGlobalMuon()) ) continue;
@@ -493,148 +629,8 @@ void MuonExercise1::analyze(const edm::Event& iEvent, const edm::EventSetup& iSe
 ////////////////////
 // Efficiencies
 ////////////////////
-  //edm::Handle <pat::PackedGenParticleCollection> packedgenColl;
-  edm::Handle<std::vector<reco::Vertex> > vertices;
-  iEvent.getByToken(vertexCollToken, vertices);
-  if(!vertices.isValid()) {
-    throw cms::Exception("Vertex collection not valid!");
-  }
-  
-  int nGoodVtx = 0;
-  const reco::Vertex *goodVtx = nullptr; 
-  for(std::vector<reco::Vertex>::const_iterator it=vertices->begin(), endVtx = vertices->end(); it!=endVtx; ++it) {
-    if(!it->isFake() && it->ndof()>4 && it->position().Rho()<2. && std::abs(it->position().Z())<24.) {
-      nGoodVtx++;
-      if(goodVtx==nullptr) goodVtx = &(*it);
-    }
-  }
-  // Require a good vertex
-  if(nGoodVtx==0) return;
-  
-  // Retrieve the GenParticle collection and loop over it 
-  //edm::Handle<reco::GenParticleCollection> genColl;
-  //iEvent.getByToken(genCollToken, genColl);
-  if(!genColl.isValid()) {
-    throw cms::Exception("GenParticle collection not valid!");
-  }
-  std::vector<const reco::GenParticle*> genmus;	
 
-
-	for(auto&& genPart : *(genColl.product())) {
-  		// Check if it's a muon from Drell-Yan process
-		if(genPart.isPromptFinalState() && std::abs(genPart.pdgId()) == 13) {
-			// Only muons within acceptance and pt>20
-  			if(genPart.pt() > 20. && std::abs(genPart.eta())<2.4) {
-  				h_genpt->Fill(genPart.pt());
- 				h_nvtx->Fill(nGoodVtx);
-                        }
-                }
-        }
-  if(genmus.size()==0) return;
-  std::vector<const reco::GenParticle*>::const_iterator gmbeg = genmus.begin(), gmend = genmus.end();
-
-  // --- Now prepare all the trigger objects --- 
-  // Retrieve TriggerResults 
-  edm::Handle<edm::TriggerResults> triggerBits;
-  iEvent.getByToken(trigResultsToken, triggerBits);
-  if(!triggerBits.isValid()) {
-    throw cms::Exception("TriggerResults collection not valid!");
-  }
-
-  const edm::TriggerNames& triggerNames = iEvent.triggerNames(*triggerBits);
-
-  // Find trigger indexes (only once)
-  if(triggerIdxList.size()==0) {
-    for(auto&& t : triggerList) {
-      for(size_t i=0, n=triggerBits->size(); i<n; ++i) {
-        if(TString(triggerNames.triggerName(i)).Contains((t+"_v").c_str())) {
-          triggerIdxList[(t+"_v").c_str()] = i;
-          break;
-        }
-      }
-    }
-  }
-
-  // Retrieve TriggerObjects 
-  edm::Handle<pat::TriggerObjectStandAloneCollection> triggerObjects;
-  iEvent.getByToken(trigObjCollToken, triggerObjects);
-  if(!triggerObjects.isValid()) {
-    throw cms::Exception("TriggerObjectStandAloneCollection collection not valid!");
-  }
-
-  // Retrieve the pat::Muon collection and loop over it 
-  //edm::Handle<pat::MuonCollection> muonColl;
-  if(!muonColl.isValid()) {
-    throw cms::Exception("Muon collection not valid!");
-  }
-
-  for(auto mu = muonColl->cbegin(); mu != muonColl->cend(); ++mu) {
-    cout << "Muon PT: " << (*mu).pt() << endl;        
-    // Let's skip muons that are standalone only
-    // Check if it is matched to a GenParticle
-    const reco::GenParticle *gmu = (*mu).genParticle();
-    if(!(*mu).genParticle()) continue;
-
-    // Check if the GenParticle is among the ones we selected 
-    //if(std::find(gmbeg, gmend, gmu)==gmend) continue;
-
-    // Fill the plots here 
-    // (Let's not cut on pat::Muon pt and |eta| (already cut at GEN level))
-
-    // -- ID --
-    //  Fill ID plots 
-    //  - Loose 
-    if((*mu).isLooseMuon()) {
-    cout << "Loose Muon PT: " << (*mu).pt() << endl;
-    h_rec_loose_pt->Fill((*mu).pt());
-    h_rec_loose_eta->Fill((*mu).eta());
-    h_rec_loose_nvtx->Fill(nGoodVtx);    
-
-    }
-
-    //  - Medium 
-    if((*mu).isMediumMuon()) {
-    cout << "Medium Muon PT: " << (*mu).pt() << endl;
-    h_rec_medium_pt->Fill((*mu).pt());
-    h_rec_medium_eta->Fill((*mu).eta());
-    h_rec_medium_nvtx->Fill(nGoodVtx);
-    }
-
-    //  - Tight
-    if((*mu).isTightMuon(*goodVtx)==false) continue; // if it's not tight, nothing else to do 
-    cout << "Tight Muon PT: " << (*mu).pt() << endl;
-    h_rec_tight_pt->Fill((*mu).pt());
-    h_rec_tight_eta->Fill((*mu).eta());
-    h_rec_tight_nvtx->Fill(nGoodVtx);
-
-    // Now isolation, only for tight muons
-    if((*mu).isIsolationValid()==false) continue;
-    const reco::MuonPFIsolation &pfR04 = (*mu).pfIsolationR04();
-
-    // Calculate PF combined relative isolation with Delta-beta correction 
-    double chargedHadronIso = (*mu).pfIsolationR04().sumChargedHadronPt;
-    double neutralHadronIso  = (*mu).pfIsolationR04().sumNeutralHadronEt;
-    double photonIso  = (*mu).pfIsolationR04().sumPhotonEt;
-    double chargedHadronIsoPU = (*mu).pfIsolationR04().sumPUPt;
-
-    double corriso = ( chargedHadronIso + std::max(0., neutralHadronIso + photonIso - 0.5*chargedHadronIsoPU) )/(*mu).pt();
-
-    if(corriso>0.15) continue; // not isolated, nothing else to do
-    h_rec_tight_iso_pt->Fill((*mu).pt());
-    h_rec_tight_iso_eta->Fill((*mu).eta());
-    h_rec_tight_iso_nvtx->Fill(nGoodVtx);
-    
-    // Finally, let's see if the isolated tight muon fired a trigger
-    bool passTrigger = matchTriggerObject((*mu), triggerIdxList, triggerNames, triggerObjects, triggerBits);
-    if(passTrigger==false) continue;
-    h_rec_tight_iso_hlt_pt->Fill((*mu).pt());
-    h_rec_tight_iso_hlt_eta->Fill((*mu).eta());
-    h_rec_tight_iso_hlt_nvtx->Fill(nGoodVtx);
-
-  } // end for(auto mu = muonColl->cbegin(); mu != muonColl->cend(); ++mu)
-
-
-
+ }
 }
 // ------------ method called once each job just before starting event loop  ------------
 void MuonExercise1::beginJob() {
